@@ -11,6 +11,7 @@ import scala.scalanative.util.ScopedVar.scoped
 import scala.tools.nsc.plugins._
 import scala.tools.nsc.{Global, util => _, _}
 
+// TODO: Phase,Global,StdPhaseが何を意味する？
 abstract class NirGenPhase[G <: Global with Singleton](override val global: G)
     extends NirPhase[G](global)
     with NirGenStat[G]
@@ -48,6 +49,7 @@ abstract class NirGenPhase[G <: Global with Singleton](override val global: G)
       Next.Unwind(exc, Next.Label(handler, Seq(exc)))
     }
 
+  //
   override def newPhase(prev: Phase): StdPhase =
     new NirCodePhase(prev)
 

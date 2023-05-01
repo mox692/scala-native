@@ -6,12 +6,14 @@ import scala.tools.nsc.plugins._
 import java.net.URI
 import java.net.URISyntaxException
 
+// nsc Compiler Pluginのエントrかな？
 class ScalaNativePlugin(val global: Global) extends Plugin {
   val name = "scalanative"
   val description = "Compile to Scala Native IR (NIR)"
   val components: List[PluginComponent] = global match {
     case _: doc.ScaladocGlobal => List(prepNativeInterop)
-    case _                     => List(prepNativeInterop, nirGen)
+    // 大きく2つのComponent(フェーズ)があるっぽい?
+    case _ => List(prepNativeInterop, nirGen)
   }
 
   /** A trick to avoid early initializers while still enforcing that `global` is
@@ -35,6 +37,7 @@ class ScalaNativePlugin(val global: Global) extends Plugin {
     val nirAddons: ScalaNativePlugin.this.nirAddons.type =
       ScalaNativePlugin.this.nirAddons
     val scalaNativeOpts = ScalaNativePlugin.this.scalaNativeOpts
+    // 実行のタイミングを定義
     override val runsAfter = List("typer")
     override val runsBefore = List("pickler")
   }
@@ -43,6 +46,7 @@ class ScalaNativePlugin(val global: Global) extends Plugin {
     val nirAddons: ScalaNativePlugin.this.nirAddons.type =
       ScalaNativePlugin.this.nirAddons
     val scalaNativeOpts = ScalaNativePlugin.this.scalaNativeOpts
+    // 実行のタイミングを定義
     override val runsAfter = List("mixin")
     override val runsBefore = List("delambdafy", "cleanup", "terminal")
   }

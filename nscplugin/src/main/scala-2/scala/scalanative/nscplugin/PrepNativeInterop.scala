@@ -11,6 +11,7 @@ import scala.tools.nsc._
  *    - Rewrite the body `scala.util.PropertiesTrait.scalaProps` to be
  *      statically determined at compile-time.
  */
+// MEMO: PrepNativeInterop のフェーズの記述はこのファイルで完結してそう
 abstract class PrepNativeInterop[G <: Global with Singleton](
     override val global: G
 ) extends NirPhase[G](global)
@@ -31,6 +32,7 @@ abstract class PrepNativeInterop[G <: Global with Singleton](
     override def description: String = PrepNativeInterop.this.description
   }
 
+  // MEMO: Transformer は nscの概念かな
   override protected def newTransformer(unit: CompilationUnit): Transformer =
     new NativeInteropTransformer(unit)
 
