@@ -76,6 +76,7 @@ object Build {
           ScalaNative.genBuildInfo(fconfig) // ident list may be empty
       }
 
+      // MEMO: ObjectPathをまとめる
       val objectPaths = fconfig.logger.time("Compiling to native code") {
         // compile generated LLVM IR
         val llObjectPaths = LLVM.compile(fconfig, generated)
@@ -101,6 +102,7 @@ object Build {
       }
 
       // finally link
+      // MEMO: これはLLVM のレイヤでのリンク
       fconfig.logger.time(
         s"Linking native code (${fconfig.gc.name} gc, ${fconfig.LTO.name} lto)"
       ) {
