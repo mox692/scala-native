@@ -33,6 +33,7 @@ class ScalaNativePlugin(val global: Global) extends Plugin {
     var _sourceURIMaps: List[URIMap] = Nil
   }
 
+  // MEMO: prepNativeInterop フェーズの定義
   object prepNativeInterop extends PrepNativeInterop[global.type](global) {
     val nirAddons: ScalaNativePlugin.this.nirAddons.type =
       ScalaNativePlugin.this.nirAddons
@@ -42,6 +43,7 @@ class ScalaNativePlugin(val global: Global) extends Plugin {
     override val runsBefore = List("pickler")
   }
 
+  // MEMO: nirGen フェーズの定義
   object nirGen extends NirGenPhase[global.type](global) {
     val nirAddons: ScalaNativePlugin.this.nirAddons.type =
       ScalaNativePlugin.this.nirAddons

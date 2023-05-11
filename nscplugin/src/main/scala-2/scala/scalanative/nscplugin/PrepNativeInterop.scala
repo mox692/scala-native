@@ -32,7 +32,7 @@ abstract class PrepNativeInterop[G <: Global with Singleton](
     override def description: String = PrepNativeInterop.this.description
   }
 
-  // MEMO: Transformer は nscの概念かな
+  // MEMO: Transformer は nscの概念かな.コンパイルに新しいフェーズを加える的な
   override protected def newTransformer(unit: CompilationUnit): Transformer =
     new NativeInteropTransformer(unit)
 
@@ -78,6 +78,8 @@ abstract class PrepNativeInterop[G <: Global with Singleton](
       }
     }
 
+    // MEMO: transformをoverrideしてる
+    //　　　　parseする前の前処理的なのをしてそう
     override def transform(tree: Tree): Tree = {
       // Recursivly widen and dealias all nested types (compler dealiases only top-level)
       def widenDealiasType(tpe: Type): Type = {

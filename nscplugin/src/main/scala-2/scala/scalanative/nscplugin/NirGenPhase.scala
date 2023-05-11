@@ -49,11 +49,12 @@ abstract class NirGenPhase[G <: Global with Singleton](override val global: G)
       Next.Unwind(exc, Next.Label(handler, Seq(exc)))
     }
 
-  //
+  // MEMO: Phase はおそらく Transformerと似た概念で、compileのフェーズの抽象化
   override def newPhase(prev: Phase): StdPhase =
     new NirCodePhase(prev)
 
   class NirCodePhase(prev: Phase) extends StdPhase(prev) {
+    // MEMO: run と apply の違いがわからん
     override def run(): Unit = {
       scalaPrimitives.init()
       nirPrimitives.init()
@@ -84,6 +85,7 @@ abstract class NirGenPhase[G <: Global with Singleton](override val global: G)
       scoped(
         curStatBuffer := statBuffer
       ) {
+        // MEMO: genClassがエントリ？
         classDefs.foreach(cd => statBuffer.genClass(cd))
       }
 
