@@ -189,16 +189,27 @@ trait NirGenExpr[G <: nsc.Global with Singleton] { self: NirGenPhase[G] =>
       genIf(retty, cond, thenp, elsep)(tree.pos)
     }
 
-    def genIf(retty: nir.Type, condp: Tree, thenp: Tree, elsep: Tree)(implicit
-        ifPos: nir.Position
-    ): Val = {
+    def genIf(
+        retty: nir.Type,
+        condp: Tree,
+        thenp: Tree,
+        elsep: Tree,
+        ensureLinktime: Boolean = false
+    )(implicit ifPos: nir.Position): Val = {
       val thenn, elsen, mergen = fresh()
       val mergev = Val.Local(fresh(), retty)
 
       getLinktimeCondition(condp).fold {
+        if (ensureLinktime) {
+          globalError(
+            condp.pos,
+            "Cannot resolve given condition in linktime, it might be depending on runtime value"
+          )
+        }
         val cond = genExpr(condp)
         buf.branch(cond, Next(thenn), Next(elsen))(condp.pos)
       } { cond =>
+        curMethodUsesLinktimeResolvedValues = true
         buf.branchLinktime(cond, Next(thenn), Next(elsen))(condp.pos)
       }
 
@@ -1209,7 +1220,7 @@ trait NirGenExpr[G <: nsc.Global with Singleton] { self: NirGenPhase[G] =>
 
       condp match {
         // if(bool) (...)
-        case Apply(LinktimeProperty(name, position), Nil) =>
+        case Apply(LinktimeProperty(name, _, position), Nil) =>
           Some {
             SimpleCondition(
               propertyName = name,
@@ -1221,7 +1232,7 @@ trait NirGenExpr[G <: nsc.Global with Singleton] { self: NirGenPhase[G] =>
         // if(!bool) (...)
         case Apply(
               Select(
-                Apply(LinktimeProperty(name, position), Nil),
+                Apply(LinktimeProperty(name, _, position), Nil),
                 nme.UNARY_!
               ),
               Nil
@@ -1236,7 +1247,7 @@ trait NirGenExpr[G <: nsc.Global with Singleton] { self: NirGenPhase[G] =>
 
         // if(property <comp> x) (...)
         case Apply(
-              Select(LinktimeProperty(name, position), comp),
+              Select(LinktimeProperty(name, _, position), comp),
               List(arg @ Literal(Constant(_)))
             ) =>
           Some {
@@ -1888,29 +1899,32 @@ trait NirGenExpr[G <: nsc.Global with Singleton] { self: NirGenPhase[G] =>
      *  and boxing result Apply.args can contain different number of arguments
      *  depending on usage, however they are passed in constant order:
      *    - 0..N args
-     *    - 0..N+1 type evidences of args (scalanative.Tag)
      *    - return type evidence
      */
     def genCFuncPtrApply(app: Apply, code: Int): Val = {
       val Apply(appRec @ Select(receiverp, _), aargs) = app
 
+      val paramTypes = app.attachments.get[NonErasedTypes] match {
+        case None =>
+          reporter.error(
+            app.pos,
+            s"Failed to generate exact NIR types for $app, something is wrong with scala-native internal."
+          )
+          Nil
+        case Some(NonErasedTypes(paramTys)) => paramTys
+      }
+
       implicit val pos: nir.Position = app.pos
-      val argsp = if (aargs.size > 2) aargs.take(aargs.length / 2) else Nil
-      val evidences = aargs.drop(aargs.length / 2)
 
       val self = genExpr(receiverp)
-
-      val retTypeEv = evidences.last
-      val unwrappedRetType = unwrapTag(retTypeEv)
-      val retType = genType(unwrappedRetType)
+      val retType = genType(paramTypes.last)
       val unboxedRetType = Type.unbox.getOrElse(retType, retType)
 
-      val args = argsp
-        .zip(evidences)
+      val args = aargs
+        .zip(paramTypes)
         .map {
-          case (arg, evidence) =>
-            val tag = unwrapTag(evidence)
-            val tpe = genType(tag)
+          case (arg, ty) =>
+            val tpe = genType(ty)
             val obj = genExpr(arg)
 
             /* buf.unboxValue does not handle Ref( Ptr | CArray | ... ) unboxing
@@ -1918,7 +1932,7 @@ trait NirGenExpr[G <: nsc.Global with Singleton] { self: NirGenPhase[G] =>
             if (Type.unbox.isDefinedAt(tpe)) {
               buf.unbox(tpe, obj, unwind)(arg.pos)
             } else {
-              buf.unboxValue(tag, partial = false, obj)(arg.pos)
+              buf.unboxValue(fromType(ty), partial = false, obj)(arg.pos)
             }
         }
       val argTypes = args.map(_.ty)
@@ -1933,7 +1947,7 @@ trait NirGenExpr[G <: nsc.Global with Singleton] { self: NirGenPhase[G] =>
       if (retType != unboxedRetType)
         buf.box(retType, result, unwind)
       else {
-        boxValue(unwrappedRetType, result)
+        boxValue(paramTypes.last, result)
       }
     }
 
