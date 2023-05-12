@@ -1500,6 +1500,8 @@ object Lower {
   val allocSmallName = extern("scalanative_alloc_small")
   val alloc = Val.Global(allocSmallName, allocSig)
 
+  // MEMO:GC系の関数.
+  // build製生物の中に同梱される？ -> 最終的にCodegenフェーズのgenerate関数に呼ばれるっぽい.
   val largeAllocName = extern("scalanative_alloc_large")
   val largeAlloc = Val.Global(largeAllocName, allocSig)
 

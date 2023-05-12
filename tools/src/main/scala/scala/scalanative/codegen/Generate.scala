@@ -23,6 +23,7 @@ object Generate {
   ) {
     val buf = mutable.UnrolledBuffer.empty[Defn]
 
+    // MEMO: 最後のcodegenのフェーズ. 全てのUser提供コードや外部ライブラリコードはここに集約される？
     def generate(): Seq[Defn] = {
       genDefnsExcludingGenerated()
       genInjects()
