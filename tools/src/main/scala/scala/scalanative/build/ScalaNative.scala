@@ -17,7 +17,9 @@ private[scalanative] object ScalaNative {
   /** Compute all globals that must be reachable based on given configuration.
    */
   def entries(config: Config): Seq[Global] = {
+    // MEMO: userが定義したファイル
     val entry = encodedMainClass(config).map(_.member(Rt.ScalaMainSig))
+    // MEMO: compileに必要な、そのほかのdepends
     val dependencies = CodeGen.depends ++ Interflow.depends
     entry ++: dependencies
   }

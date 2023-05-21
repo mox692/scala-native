@@ -3,6 +3,7 @@ package nir
 
 import Type._
 
+// MEMO: Rt = Runtime?
 object Rt {
   val Object = Ref(Global.Top("java.lang.Object"))
   val Class = Ref(Global.Top("java.lang.Class"))

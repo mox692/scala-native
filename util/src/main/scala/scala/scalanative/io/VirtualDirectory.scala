@@ -37,6 +37,7 @@ sealed trait VirtualDirectory {
   def merge(sources: Seq[Path], target: Path): Unit
 }
 
+// MEMO: jar
 object VirtualDirectory {
 
   /** Real, non-virtual directory on local file system. */
@@ -48,6 +49,8 @@ object VirtualDirectory {
     new LocalDirectory(file)
   }
 
+  // TODO: リンクフェーズでjarを扱うような時ってどういう状況？
+  // 基本的にnsc pluginで NIR に全て変換される認識なんだけど.
   /** Virtual directory that represents contents of the jar file. */
   def jar(file: Path)(implicit in: Scope): VirtualDirectory = {
     val absolute = file.toAbsolutePath
