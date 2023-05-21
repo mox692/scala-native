@@ -238,27 +238,29 @@ class Reach(
     done(defn.name) = defn
   }
 
-  def reachEntry(name: Global): Unit = {
-    if (!name.isTop) {
-      reachEntry(name.top)
-    }
-    from(name) = Global.None
-    reachGlobalNow(name)
-    infos.get(name) match {
-      case Some(cls: Class) =>
-        if (!cls.attrs.isAbstract) {
-          reachAllocation(cls)
-          if (cls.isModule) {
-            val init = cls.name.member(Sig.Ctor(Seq.empty))
-            if (loaded(cls.name).contains(init)) {
-              reachGlobal(init)
+  @tailrec
+  private def reachEntry(name: Global): Unit =
+    name match {
+      case n if !n.isTop => reachEntry(name.top)
+      case _ => {
+        from(name) = Global.None
+        reachGlobalNow(name)
+        infos.get(name) match {
+          case Some(cls: Class) =>
+            if (!cls.attrs.isAbstract) {
+              reachAllocation(cls)
+              if (cls.isModule) {
+                val init = cls.name.member(Sig.Ctor(Seq.empty))
+                if (loaded(cls.name).contains(init)) {
+                  reachGlobal(init)
+                }
+              }
             }
-          }
+          case _ =>
+            ()
         }
-      case _ =>
-        ()
+      }
     }
-  }
 
   def reachClinit(name: Global): Unit = {
     reachGlobalNow(name)
