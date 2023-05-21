@@ -21,6 +21,10 @@ private[scalanative] object ScalaNative {
     val entry = encodedMainClass(config).map(_.member(Rt.ScalaMainSig))
     // MEMO: compileに必要な、そのほかのdepends
     val dependencies = CodeGen.depends ++ Interflow.depends
+    // DEBUG:
+    println(s"depend entries ------------")
+    (entry ++: dependencies).foreach(e => println(s"${e.show}"))
+    println(s"---------------------------")
     entry ++: dependencies
   }
 

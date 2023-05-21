@@ -16,6 +16,9 @@ object Defn {
   final case class Const(attrs: Attrs, name: Global, ty: Type, rhs: Val)(
       implicit val pos: Position
   ) extends Defn
+
+  // MEMO: externや、他classのmethod呼び出しなど. linkのフェーズで使われる
+  // nscplugin/src/main/scala-3/scala/scalanative/nscplugin/NirGenStat.scala を参照.
   final case class Declare(attrs: Attrs, name: Global, ty: Type)(implicit
       val pos: Position
   ) extends Defn

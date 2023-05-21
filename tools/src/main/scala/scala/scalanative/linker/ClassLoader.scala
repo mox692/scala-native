@@ -29,6 +29,8 @@ object ClassLoader {
       classpath.flatMap(_.classesWithEntryPoints)
     }
 
+    // MEMO: classPathesから、引数にわたってきたglobalを取得し、Denfのlistを返す
+    // Q: これ Option[Seq] じゃなくて Seqじゃだめ？
     def load(global: Global): Option[Seq[Defn]] =
       classpath.collectFirst {
         case path if path.contains(global) =>

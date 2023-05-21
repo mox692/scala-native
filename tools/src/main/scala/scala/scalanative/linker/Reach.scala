@@ -13,11 +13,14 @@ class Reach(
 ) extends LinktimeValueResolver {
   import Reach._
 
+  // MEMO: 探索済みで、到達しないGlobalのlist (?)
   val unavailable = mutable.Set.empty[Global]
+  // MEMO: 探索済みで、到達したGlobalと、その中のDefnたちのmap
   val loaded = mutable.Map.empty[Global, mutable.Map[Global, Defn]]
   val enqueued = mutable.Set.empty[Global]
   var todo = List.empty[Global]
   val done = mutable.Map.empty[Global, Defn]
+  // MEMO: 現在作業中 or この後する予定のGlobalを詰めておく？
   var stack = List.empty[Global]
   val links = mutable.Set.empty[Attr.Link]
   val infos = mutable.Map.empty[Global, Info]
@@ -31,6 +34,7 @@ class Reach(
   private case class DelayedMethod(owner: Global.Top, sig: Sig, pos: Position)
   private val delayedMethods = mutable.Set.empty[DelayedMethod]
 
+  // MEMO: これがinitCodeとして走る
   entries.foreach(reachEntry)
 
   // Internal hack used inside linker tests, for more information
@@ -112,11 +116,14 @@ class Reach(
         .load(owner)
         .fold[Unit] {
           if (!ignoreIfUnavailable) {
+            // MEMO: 見つからなかったら
             unavailable += owner
           }
         } { defns =>
           val scope = mutable.Map.empty[Global, Defn]
+          // MEMO: 得られたdefnたちをmapに詰める
           defns.foreach { defn => scope(defn.name) = defn }
+          // MEMO: 最終的にやりたいこと
           loaded(owner) = scope
         }
     }
@@ -138,6 +145,7 @@ class Reach(
 
     loaded
       .get(owner)
+      // MEMO: Defnsの中から、globalに一致するものだけを選ぶ
       .flatMap(_.get(global))
       .orElse(fallback)
       .orElse {
@@ -238,27 +246,29 @@ class Reach(
     done(defn.name) = defn
   }
 
-  def reachEntry(name: Global): Unit = {
-    if (!name.isTop) {
-      reachEntry(name.top)
-    }
-    from(name) = Global.None
-    reachGlobalNow(name)
-    infos.get(name) match {
-      case Some(cls: Class) =>
-        if (!cls.attrs.isAbstract) {
-          reachAllocation(cls)
-          if (cls.isModule) {
-            val init = cls.name.member(Sig.Ctor(Seq.empty))
-            if (loaded(cls.name).contains(init)) {
-              reachGlobal(init)
+  @tailrec
+  private def reachEntry(name: Global): Unit =
+    name match {
+      case n if !n.isTop => reachEntry(name.top)
+      case _ => {
+        from(name) = Global.None
+        reachGlobalNow(name)
+        infos.get(name) match {
+          case Some(cls: Class) =>
+            if (!cls.attrs.isAbstract) {
+              reachAllocation(cls)
+              if (cls.isModule) {
+                val init = cls.name.member(Sig.Ctor(Seq.empty))
+                if (loaded(cls.name).contains(init)) {
+                  reachGlobal(init)
+                }
+              }
             }
-          }
+          case _ =>
+            ()
         }
-      case _ =>
-        ()
+      }
     }
-  }
 
   def reachClinit(name: Global): Unit = {
     reachGlobalNow(name)
