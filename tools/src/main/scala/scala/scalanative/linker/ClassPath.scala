@@ -13,6 +13,7 @@ sealed trait ClassPath {
   /** Check if given global is present in this classpath. */
   private[scalanative] def contains(name: Global): Boolean
 
+  // MEMO: ClassLoaderから使われる
   /** Load given global and info about its dependencies. */
   private[scalanative] def load(name: Global): Option[Seq[Defn]]
 

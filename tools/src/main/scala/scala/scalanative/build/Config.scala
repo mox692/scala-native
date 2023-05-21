@@ -60,6 +60,8 @@ sealed trait Config {
   def mainClass: Option[String]
 
   /** Sequence of all NIR locations. */
+  // MEMO: ここに全てのNIRがlinkされてるのか
+  //       nsc pluginはとりあえず全部のlibをbuildするのかな？ んで、linkフェーズで必要なnscだけlinkする、的な.
   def classPath: Seq[Path]
 
   /** The logger used by the toolchain. */
