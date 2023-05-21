@@ -52,9 +52,11 @@ object ClassPath {
         .resolve(new java.net.URI(file.getFileName().toString))
         .toString
 
+    // MEMO: 引数のGlobalがchacheに存在すれbそれを返し、なければファイルの内容をdeseriして返す
     def load(name: Global): Option[Seq[Defn]] =
       cache.getOrElseUpdate(
         name, {
+          // MEMO: なんでここでname.topを読んでる？ nameじゃだめ？
           files.get(name.top).map { file =>
             deserializeBinary(
               directory.read(file),
