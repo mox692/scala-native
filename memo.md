@@ -6,11 +6,14 @@
   * 全てのnativelibとかを出力してそうに見えるが...
   * そしてこれが2回目のcompileの時とかはどうなる？
 * nirのGlobalとは？？
-
+* mainの内容に関係なく、javalibとか全部compile(nirの生成)してない？
+  * デフォルトではそれでも良いかもしれないけど、理想的にはもっとplugableであるべきな気がするんだけど、どうだろうか？ (それこそbaremetalとかの応用がしやすそう)
+* scala-cliとかmilliとかの対応ってしてるんだっけ？
+* unix向けのbuildでもwindowsのコードcompileしてない？
 
 
 # アイデア
-* 
+* buildのログをdebugで出してあげると良さげな気がする
 
 # Annot
 * // MEMO: 
