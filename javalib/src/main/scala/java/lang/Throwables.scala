@@ -46,8 +46,10 @@ private[lang] object StackTrace {
         val context = alloc[scala.Byte](unwind.sizeOfContext)
         val ip = stackalloc[CSize]()
 
+        // MEMO: libunwindの初期ルーチン
         unwind.get_context(context)
         unwind.init_local(cursor, context)
+        // 全てのトレースを取得する(?)
         while (unwind.step(cursor) > 0) {
           unwind.get_reg(cursor, unwind.UNW_REG_IP, ip)
           buffer += cachedStackTraceElement(cursor, !ip)

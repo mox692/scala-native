@@ -481,6 +481,14 @@ object Build {
       .withNativeCompilerPlugin
       .withJUnitPlugin
       .dependsOn(scalalib, testInterface % "test")
+      .settings(
+        logLevel := Level.Debug
+      )
+      .settings(
+        nativeConfig ~= {
+          _.withDump(true)
+        }
+      )
 
 // Testing infrastructure ------------------------------------------------
   lazy val testingCompilerInterface =
