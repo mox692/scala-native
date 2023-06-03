@@ -105,7 +105,9 @@ private[scalanative] object LLVM {
       Seq(compiler, "-c", inpath, "-o", outpath) ++ flags
 
     // compile
-    config.logger.running(compilec)
+    // config.logger.running(compilec)
+    println(s"${compilec}")
+
     val result = Process(compilec, workDir.toFile) !
       Logger.toProcessLogger(config.logger)
     if (result != 0) {
