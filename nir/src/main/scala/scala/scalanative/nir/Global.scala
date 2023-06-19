@@ -1,6 +1,7 @@
 package scala.scalanative
 package nir
 
+// Global(他のpackageから参照できる)対象.
 sealed abstract class Global {
   def top: Global.Top
   def member(sig: Sig): Global.Member

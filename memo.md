@@ -8,7 +8,9 @@
 * https://github.com/scala-native/scala-native/pull/3279 を読む
 - [ ] ソースを追うための工夫
   - [ ] .hnirを出力するように、sandboxの設定を変更
-- [ ] 
+- [ ] GCの仕組みを見る
+  - [ ] いつ、どのようにGCが走る？
+    - [ ] GCの対象のリストに追加されるイメージなんだが
 
 # 疑問
 * classpath とは何？
@@ -25,16 +27,18 @@
 * scala-cliとかmilliとかの対応ってしてるんだっけ？
 * unix向けのbuildでもwindowsのコードcompileしてない？
 
-
-# アイデア
-* ~~buildのログをdebugで出してあげると良さげな気がする~~
-* 
-
-# Annot
-* // MEMO: 
-* // TODO: 
-* // Q: 
-* // DEBUG: 
+# GCの処理の流れ
+* nativelib/src/main/resources/scala-native/gc/boehm/gc.c でCレベルのprimitiveが定義されている. 一部 Boehm GC をそのまま使ってる
+* tools/src/main/scala/scala/scalanative/codegen/Lower.scala の genClassallocOp でこれらを呼び出すようなコードを生成していそう
+  * ここは Op を見て、具体的なコードを生成する箇所.
+  * NirにClassallocがあると、genClassallocOpが働く.
+* 実際に hnir を見たら、classallocされてそう
+```
+  %12 = classalloc @"T34java.lang.IllegalArgumentException"
+  %13 = call[(@"T34java.lang.IllegalArgumentException", @"T16java.lang.String") => unit] @"M34java.lang.IllegalArgumentExceptionRL16java.lang.StringE" : ptr(%12 : !?@"T34java.lang.IllegalArgumentException", "Buffer size <= 0")
+  throw %12 : !?@"T34java.lang.IllegalArgumentException"
+```
+* next todo: allocationのコードはわかったので、collectの箇所のソースを読む
 
 # java libのreplace
 * concurrentSkipListMap
@@ -61,3 +65,13 @@
 * Object -> Any
 * fieldやmethodを持たないものはcase classに.
 
+
+# アイデア
+* ~~buildのログをdebugで出してあげると良さげな気がする~~
+* 
+
+# Annot
+* // MEMO: 
+* // TODO: 
+* // Q: 
+* // DEBUG: 
