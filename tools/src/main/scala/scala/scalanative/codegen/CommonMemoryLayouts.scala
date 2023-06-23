@@ -17,6 +17,7 @@ class CommonMemoryLayouts(implicit meta: Metadata) {
       else -1
   }
 
+  // MEMO: runtime type info
   object Rtti
       extends Layout(
         Type.Ptr :: // ClassRtti

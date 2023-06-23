@@ -75,3 +75,9 @@
 * // TODO: 
 * // Q: 
 * // DEBUG: 
+
+
+# Issue and PR
+* https://github.com/scala-native/scala-native/issues/3341
+  * aaa
+

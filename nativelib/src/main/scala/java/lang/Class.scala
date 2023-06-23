@@ -71,6 +71,7 @@ final class _Class[A] {
   @alwaysinline private def is(cls: Class[_]): Boolean =
     this eq cls.asInstanceOf[_Class[A]]
 
+  // MEMO: isInstanceOf のunder the hood
   private def is(left: _Class[_], right: _Class[_]): Boolean =
     // This replicates the logic of the compiler-generated instance check
     // that you would normally get if you do (obj: L).isInstanceOf[R],
