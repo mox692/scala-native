@@ -106,7 +106,8 @@ private[scalanative] object LLVM {
 
     // compile
     // config.logger.running(compilec)
-    println(s"${compilec}")
+    // DEBUG:
+    // println(s"${compilec}")
 
     val result = Process(compilec, workDir.toFile) !
       Logger.toProcessLogger(config.logger)

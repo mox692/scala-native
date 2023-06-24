@@ -5,6 +5,8 @@ import scala.collection.mutable
 import scalanative.nir._
 import scalanative.linker.{Trait, Class}
 
+// MEMO: linkerでlibやsourceを全て舐めた結果の`Metadata`.
+// classごとのidRangeや、 rttiの情報などが格納されている
 class Metadata(
     val linked: linker.Result,
     val config: build.NativeConfig,

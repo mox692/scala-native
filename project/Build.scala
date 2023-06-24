@@ -482,7 +482,7 @@ object Build {
       .withJUnitPlugin
       .dependsOn(scalalib, testInterface % "test")
       .settings(
-        logLevel := Level.Debug
+        // logLevel := Level.Debug
       )
       .settings(
         nativeConfig ~= {

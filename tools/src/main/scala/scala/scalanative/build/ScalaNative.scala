@@ -22,9 +22,9 @@ private[scalanative] object ScalaNative {
     // MEMO: compileに必要な、そのほかのdepends
     val dependencies = CodeGen.depends ++ Interflow.depends
     // DEBUG:
-    println(s"// DEBUG: depend entries in link phase------------")
-    (entry ++: dependencies).foreach(e => println(s"${e.show}"))
-    println(s"---------------------------")
+    // println(s"// DEBUG: depend entries in link phase------------")
+    // (entry ++: dependencies).foreach(e => println(s"${e.show}"))
+    // println(s"---------------------------")
     entry ++: dependencies
   }
 

@@ -22,10 +22,18 @@ object Lower {
 
     implicit val linked: Result = meta.linked
 
+    // DEBUG:
+    // ClassのRangeたちをみる
+    // meta.ranges.foreach {
+    //   case (k, v) =>
+    //     if (k.name.show.contains("WeakReference"))
+    //       println(s"(k, v): ${(k.name, v)}")
+    // }
     val Object = linked.infos(Rt.Object.name).asInstanceOf[Class]
 
     private val zero = Val.Int(0)
     private val one = Val.Int(1)
+    // MEMO: Rtti.ClassIdIdx はいつincrementされる？
     val RttiClassIdPath = Seq(zero, Val.Int(Rtti.ClassIdIdx))
     val RttiTraitIdPath = Seq(zero, Val.Int(Rtti.TraitIdIdx))
     val ClassRttiDynmapPath = Seq(zero, Val.Int(ClassRtti.DynmapIdx))
@@ -255,6 +263,7 @@ object Lower {
       case _                             => super.onVal(value)
     }
 
+    // MEMO: buf -> Valを生成
     def genVal(buf: Buffer, value: Val)(implicit pos: Position): Val =
       value match {
         case Val.ClassOf(ScopeRef(node)) => rtti(node).const
@@ -887,6 +896,7 @@ object Lower {
       genReflectiveLookup()
     }
 
+    // MEMO: 最初にここに飛ぶ
     def genIsOp(buf: Buffer, n: Local, op: Op.Is)(implicit
         pos: Position
     ): Unit = {
@@ -896,6 +906,8 @@ object Lower {
         case Op.Is(_, Val.Null | Val.Zero(_)) =>
           let(n, Op.Copy(Val.False), unwind)
 
+        // MEMO: Op.Is は下記のinstructionに置き換えられる
+        //       下記をCで模倣すればいけるはず？
         case Op.Is(ty, v) =>
           val obj = genVal(buf, v)
           val isNullL, checkL, resultL = fresh()
@@ -929,7 +941,9 @@ object Lower {
 
         case ClassRef(cls) =>
           val range = meta.ranges(cls)
+          // MEMO: なんでこのletの帰り値がptrになるんだろう
           val typeptr = let(Op.Load(Type.Ptr, obj), unwind)
+          // MEMO: ここで idptr(そのクラスのidentity情報？)のpointerを生成している
           val idptr =
             let(
               Op.Elem(Rtti.layout, typeptr, RttiClassIdPath),
@@ -940,6 +954,7 @@ object Lower {
             let(Op.Comp(Comp.Sle, Type.Int, Val.Int(range.start), id), unwind)
           val le =
             let(Op.Comp(Comp.Sle, Type.Int, id, Val.Int(range.end)), unwind)
+          // MEMO: BinとかSleとかがよく分からんが、ClassRefの時は最終的にこの操作を返していそうなのがわかる
           let(Op.Bin(Bin.And, Type.Bool, ge, le), unwind)
 
         case TraitRef(trt) =>
@@ -1764,6 +1779,9 @@ object Lower {
     buf += RuntimeNothing.name
     buf += GCSafepoint.name
     buf += GCSetMutatorThreadState.name
+
+    // DEBUG:
+    // buf.toSeq.foreach { d => println(s"depends: ${d}") }
     buf.toSeq
   }
 }

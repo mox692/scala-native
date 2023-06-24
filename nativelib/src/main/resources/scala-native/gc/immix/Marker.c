@@ -95,6 +95,7 @@ void Marker_Mark(Heap *heap, Stack *stack) {
         } else {
             int64_t *ptr_map = object->rtti->refMapStruct;
             for (int i = 0; ptr_map[i] != LAST_FIELD_OFFSET; i++) {
+                // MEMO: 弱参照であればmarkせずにcontinue
                 if (Object_IsReferantOfWeakReference(object, ptr_map[i]))
                     continue;
                 Marker_markField(heap, stack, object->fields[ptr_map[i]]);

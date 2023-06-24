@@ -72,7 +72,8 @@ final class _Class[A] {
     this eq cls.asInstanceOf[_Class[A]]
 
   // MEMO: isInstanceOf のunder the hood
-  private def is(left: _Class[_], right: _Class[_]): Boolean =
+  // cat.isInstanceOf[Animal] => true になる時、left -> cat, right -> Animal
+  private def is(left: _Class[_], right: _Class[_]): Boolean = {
     // This replicates the logic of the compiler-generated instance check
     // that you would normally get if you do (obj: L).isInstanceOf[R],
     // where rtti for L and R are `left` and `right`.
@@ -81,6 +82,7 @@ final class _Class[A] {
         val rightFrom = right.id
         val rightTo = right.idRangeUntil
         val leftId = left.id
+        // MEMO: rightの中に
         leftId >= rightFrom && leftId <= rightTo
       } else {
         __check_class_has_trait(left.id, -right.id - 1)
@@ -92,6 +94,7 @@ final class _Class[A] {
         __check_trait_has_trait(-left.id - 1, -right.id - 1)
       }
     }
+  }
 
   def isInterface(): scala.Boolean =
     id < 0

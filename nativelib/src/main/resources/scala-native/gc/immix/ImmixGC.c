@@ -67,6 +67,7 @@ INLINE void *scalanative_alloc_atomic(void *info, size_t size) {
     return scalanative_alloc(info, size);
 }
 
+// MEMO: Heap_Collectはscalanative_allocの中でも呼ばれうるが、直接呼ばれるこ
 INLINE void scalanative_collect() { Heap_Collect(&heap, &stack); }
 
 INLINE void scalanative_register_weak_reference_handler(void *handler) {

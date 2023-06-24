@@ -79,5 +79,12 @@
 
 # Issue and PR
 * https://github.com/scala-native/scala-native/issues/3341
-  * aaa
+  * 6/24
+    * issueコメントでやらないといけないことはわかった
+    * が、下記がよくわかっていない.
+      * WeakReferenceIdとはなんなのか？
+      * isInstanceOf が `cls.id >= WeakReferenceId && cls.idRangeUnti <= WeakReferenceId` で表現できるのはなぜ？
+        * class.idとclass.idRangeUntiの違いは？
+          * `nativelib/src/main/resources/scala-native/gc/immix_commix/headers/ObjectHeader.h` に入れたdebugの感じだと、どっちも同じ値を取ることがあるっぽい？
+          * 
 

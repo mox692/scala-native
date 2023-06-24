@@ -17,7 +17,9 @@ class CommonMemoryLayouts(implicit meta: Metadata) {
       else -1
   }
 
-  // MEMO: runtime type info
+  // MEMO: runtime type info.
+  // nativelib/src/main/resources/scala-native/gc/immix_commix/headers/ObjectHeader.h を
+  // sclaaでencodeしている
   object Rtti
       extends Layout(
         Type.Ptr :: // ClassRtti

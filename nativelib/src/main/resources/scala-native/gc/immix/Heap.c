@@ -227,6 +227,7 @@ done:
     return (word_t *)object;
 }
 
+// MEMO: めちゃ純粋に疑問なんだが, AllocSmallの時は絶対にcollectする必要に駆られることはないの？
 INLINE word_t *Heap_AllocSmall(Heap *heap, uint32_t size) {
     assert(size % ALLOCATION_ALIGNMENT == 0);
     assert(size < MIN_BLOCK_SIZE);
@@ -257,6 +258,7 @@ INLINE word_t *Heap_AllocSmall(Heap *heap, uint32_t size) {
 word_t *Heap_Alloc(Heap *heap, uint32_t objectSize) {
     assert(objectSize % ALLOCATION_ALIGNMENT == 0);
 
+    // objectSize > 8192
     if (objectSize >= LARGE_BLOCK_SIZE) {
         return Heap_AllocLarge(heap, objectSize);
     } else {
@@ -264,6 +266,7 @@ word_t *Heap_Alloc(Heap *heap, uint32_t objectSize) {
     }
 }
 
+// MEMO: 回収のエントリポイント
 void Heap_Collect(Heap *heap, Stack *stack) {
 #ifdef SCALANATIVE_MULTITHREADING_ENABLED
     if (!Synchronizer_acquire())
