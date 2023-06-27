@@ -18,6 +18,8 @@ import org.scalanative.testsuite.utils.Platform
 class WeakReferenceTest {
 
   case class A()
+  class SubclassedWeakRef[A](a: A, referenceQueue: ReferenceQueue[A])
+      extends WeakReference[A](a, referenceQueue)
 
   def gcAssumption(): Unit = {
     assumeTrue(
@@ -26,24 +28,21 @@ class WeakReferenceTest {
     )
   }
 
-  class SubclassedWeakRef1[A](a: A, referenceQueue: ReferenceQueue[A])
-      extends WeakReference[A](a, referenceQueue)
-
   @noinline def allocWeakRef(
       referenceQueue: ReferenceQueue[A]
   ): WeakReference[A] = {
     var a = A()
-    val weakRef = new WeakReference[A](a, referenceQueue)
+    val weakRef = new WeakReference(a, referenceQueue)
     assertEquals("get() should return object reference", weakRef.get(), A())
     a = null
     weakRef
   }
 
-  @noinline def allocWeakRef2(
+  @noinline def allocSubclassedWeakRef(
       referenceQueue: ReferenceQueue[A]
-  ): SubclassedWeakRef1[A] = {
+  ): SubclassedWeakRef[A] = {
     var a = A()
-    val weakRef = new SubclassedWeakRef1[A](a, referenceQueue)
+    val weakRef = new SubclassedWeakRef(a, referenceQueue)
     assertEquals("get() should return object reference", weakRef.get(), A())
     a = null
     weakRef
@@ -68,7 +67,7 @@ class WeakReferenceTest {
           if (System.currentTimeMillis() < deadline) {
             // Give GC something to collect
             locally {
-              val _ = Seq.fill(100)(new Object {})
+              val _ = Seq.fill(1000)(new Object {})
             }
             Thread.sleep(200)
             GC.collect()
@@ -85,7 +84,7 @@ class WeakReferenceTest {
     val refQueue = new ReferenceQueue[A]()
     val weakRef1 = allocWeakRef(refQueue)
     val weakRef2 = allocWeakRef(refQueue)
-    val weakRef3 = allocWeakRef2(refQueue)
+    val weakRef3 = allocSubclassedWeakRef(refQueue)
     val weakRefList = List(weakRef1, weakRef2, weakRef3)
 
     GC.collect()
