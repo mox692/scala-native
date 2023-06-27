@@ -60,7 +60,7 @@ class WeakReferenceTest {
           if (System.currentTimeMillis() < deadline) {
             // Give GC something to collect
             locally {
-              val _ = Seq.fill(1000)(new Object {})
+              val _ = Seq.fill(300)(new Object {})
             }
             Thread.sleep(200)
             GC.collect()
