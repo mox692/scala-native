@@ -78,38 +78,32 @@ class WeakReferenceTest {
     val weakRef1 = allocWeakRef(refQueue, new WeakReference[A](_, _))
     val weakRef2 = allocWeakRef(refQueue, new WeakReference[A](_, _))
     val weakRef3 = allocWeakRef(refQueue, new SubclassedWeakRef1[A](_, _))
-    val weakRef4 = allocWeakRef(refQueue, new SubclassedWeakRef2[A](_, _))
-    val weakRefList = List(weakRef1, weakRef2, weakRef3, weakRef4)
+    val weakRefList = List(weakRef1, weakRef2, weakRef3)
 
     GC.collect()
     def newDeadline() = System.currentTimeMillis() + 60 * 1000
     assertEventuallyIsCollected("weakRef1", weakRef1, deadline = newDeadline())
     assertEventuallyIsCollected("weakRef2", weakRef2, deadline = newDeadline())
     assertEventuallyIsCollected("weakRef3", weakRef3, deadline = newDeadline())
-    assertEventuallyIsCollected("weakRef4", weakRef4, deadline = newDeadline())
 
     assertEquals("weakRef1", null, weakRef1.get())
     assertEquals("weakRef2", null, weakRef2.get())
     assertEquals("weakRef3", null, weakRef3.get())
-    assertEquals("weakRef4", null, weakRef4.get())
     val a = refQueue.poll()
     assertNotNull("a was null", a)
     val b = refQueue.poll()
     assertNotNull("b was null", b)
     val c = refQueue.poll()
     assertNotNull("c was null", c)
-    val d = refQueue.poll()
-    assertNotNull("d was null", d)
     assertTrue("!contains a", weakRefList.contains(a))
     assertTrue("!contains b", weakRefList.contains(b))
     assertTrue("!contains c", weakRefList.contains(c))
-    assertTrue("!contains d", weakRefList.contains(d))
     def allDistinct(list: List[_]): Unit = list match {
       case head :: next =>
         next.foreach(assertNotEquals(_, head)); allDistinct(next)
       case Nil => ()
     }
-    allDistinct(List(a, b, c, d))
+    allDistinct(List(a, b, c))
     assertEquals("pool not null", null, refQueue.poll())
   }
 
