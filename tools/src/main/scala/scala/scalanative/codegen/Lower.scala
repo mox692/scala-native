@@ -1042,22 +1042,42 @@ object Lower {
     def genClassallocOp(buf: Buffer, n: Local, op: Op.Classalloc)(implicit
         pos: Position
     ): Unit = {
-      val Op.Classalloc(ClassRef(cls)) = op: @unchecked
+      val Op.Classalloc(ClassRef(cls), v) = op: @unchecked
+      val zone = v.map(genVal(buf, _))
 
       val size = meta.layout(cls).size
-      val allocMethod =
-        if (size < LARGE_OBJECT_MIN_SIZE) alloc else largeAlloc
-
       assert(size == size.toInt)
-      buf.let(
-        n,
-        Op.Call(
-          allocSig,
-          allocMethod,
-          Seq(rtti(cls).const, Val.Size(size.toInt))
-        ),
-        unwind
-      )
+
+      zone match {
+        case Some(zone) =>
+          val safeZoneAllocImplMethod = Val.Local(fresh(), Type.Ptr)
+          genMethodOp(
+            buf,
+            safeZoneAllocImplMethod.name,
+            Op.Method(zone, safeZoneAllocImpl.sig)
+          )
+          buf.let(
+            n,
+            Op.Call(
+              safeZoneAllocImplSig,
+              safeZoneAllocImplMethod,
+              Seq(zone, rtti(cls).const, Val.Size(size.toInt))
+            ),
+            unwind
+          )
+        case None =>
+          val allocMethod =
+            if (size < LARGE_OBJECT_MIN_SIZE) alloc else largeAlloc
+          buf.let(
+            n,
+            Op.Call(
+              allocSig,
+              allocMethod,
+              Seq(rtti(cls).const, Val.Size(size.toInt))
+            ),
+            unwind
+          )
+      }
     }
 
     def genConvOp(buf: Buffer, n: Local, op: Op.Conv)(implicit
@@ -1334,16 +1354,28 @@ object Lower {
     def genArrayallocOp(buf: Buffer, n: Local, op: Op.Arrayalloc)(implicit
         pos: Position
     ): Unit = {
-      val Op.Arrayalloc(ty, v) = op
-      val init = genVal(buf, v)
+      val Op.Arrayalloc(ty, v1, v2) = op
+      val init = genVal(buf, v1)
+      val zone = v2.map(genVal(buf, _))
       init match {
         case len if len.ty == Type.Int =>
+          val (arrayAlloc, arrayAllocSig) = zone match {
+            case Some(_) => (arrayZoneAlloc, arrayZoneAllocSig)
+            case None    => (arrayHeapAlloc, arrayHeapAllocSig)
+          }
           val sig = arrayAllocSig.getOrElse(ty, arrayAllocSig(Rt.Object))
           val func = arrayAlloc.getOrElse(ty, arrayAlloc(Rt.Object))
           val module = genModuleOp(buf, fresh(), Op.Module(func.owner))
           buf.let(
             n,
-            Op.Call(sig, Val.Global(func, Type.Ptr), Seq(module, len)),
+            Op.Call(
+              sig,
+              Val.Global(func, Type.Ptr),
+              zone match {
+                case Some(zone) => Seq(module, len, zone)
+                case None       => Seq(module, len)
+              }
+            ),
             unwind
           )
         case arrval: Val.ArrayValue =>
@@ -1521,6 +1553,13 @@ object Lower {
   val largeAllocName = extern("scalanative_alloc_large")
   val largeAlloc = Val.Global(largeAllocName, allocSig)
 
+  val SafeZone = Type.Ref(Global.Top("scala.scalanative.memory.SafeZone"))
+  val safeZoneAllocImplSig =
+    Type.Function(Seq(SafeZone, Type.Ptr, Type.Size), Type.Ptr)
+  val safeZoneAllocImpl = SafeZone.name.member(
+    Sig.Method("allocImpl", Seq(Type.Ptr, Type.Size, Type.Ptr))
+  )
+
   val dyndispatchName = extern("scalanative_dyndispatch")
   val dyndispatchSig =
     Type.Function(Seq(Type.Ptr, Type.Int), Type.Ptr)
@@ -1582,7 +1621,7 @@ object Lower {
   val throwSig = Type.Function(Seq(Type.Ptr), Type.Nothing)
   val throw_ = Val.Global(throwName, Type.Ptr)
 
-  val arrayAlloc = Type.typeToArray.map {
+  val arrayHeapAlloc = Type.typeToArray.map {
     case (ty, arrname) =>
       val Global.Top(id) = arrname: @unchecked
       val arrcls = Type.Ref(arrname)
@@ -1591,11 +1630,28 @@ object Lower {
         Sig.Method("alloc", Seq(Type.Int, arrcls))
       )
   }.toMap
-  val arrayAllocSig = Type.typeToArray.map {
+  val arrayHeapAllocSig = Type.typeToArray.map {
     case (ty, arrname) =>
       val Global.Top(id) = arrname: @unchecked
       ty -> Type.Function(
         Seq(Type.Ref(Global.Top(id + "$")), Type.Int),
+        Type.Ref(arrname)
+      )
+  }.toMap
+  val arrayZoneAlloc = Type.typeToArray.map {
+    case (ty, arrname) =>
+      val Global.Top(id) = arrname: @unchecked
+      val arrcls = Type.Ref(arrname)
+      ty -> Global.Member(
+        Global.Top(id + "$"),
+        Sig.Method("alloc", Seq(Type.Int, SafeZone, arrcls))
+      )
+  }.toMap
+  val arrayZoneAllocSig = Type.typeToArray.map {
+    case (ty, arrname) =>
+      val Global.Top(id) = arrname: @unchecked
+      ty -> Type.Function(
+        Seq(Type.Ref(Global.Top(id + "$")), Type.Int, SafeZone),
         Type.Ref(arrname)
       )
   }.toMap
@@ -1743,7 +1799,7 @@ object Lower {
     buf.toSeq
   }
 
-  val depends: Seq[Global] = {
+  def depends(implicit platform: PlatformInfo): Seq[Global] = {
     val buf = mutable.UnrolledBuffer.empty[Global]
     buf += Rt.ClassName
     buf += Rt.ClassIdName
@@ -1763,7 +1819,8 @@ object Lower {
     buf ++= BoxTo.values
     buf ++= UnboxTo.values
     buf += arrayLength
-    buf ++= arrayAlloc.values
+    buf ++= arrayHeapAlloc.values
+    buf ++= arrayZoneAlloc.values
     buf ++= arraySnapshot.values
     buf ++= arrayApplyGeneric.values
     buf ++= arrayApply.values
@@ -1777,11 +1834,10 @@ object Lower {
     buf += throwNoSuchMethod
     buf += RuntimeNull.name
     buf += RuntimeNothing.name
-    buf += GCSafepoint.name
-    buf += GCSetMutatorThreadState.name
-
-    // DEBUG:
-    // buf.toSeq.foreach { d => println(s"depends: ${d}") }
+    if (platform.isMultithreadingEnabled) {
+      buf += GCSafepoint.name
+      buf += GCSetMutatorThreadState.name
+    }
     buf.toSeq
   }
 }

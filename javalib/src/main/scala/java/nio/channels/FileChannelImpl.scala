@@ -1,22 +1,29 @@
 package java.nio.channels
 
-import java.nio.file.Files
-
 import java.nio.{ByteBuffer, MappedByteBuffer, MappedByteBufferImpl}
+import java.nio.channels.FileChannel.MapMode
+import java.nio.file.Files
 import java.nio.file.WindowsException
+
 import scala.scalanative.nio.fs.unix.UnixException
 
 import java.io.FileDescriptor
 import java.io.File
+import java.io.IOException
 
 import scala.scalanative.meta.LinktimeInfo.isWindows
-import java.io.IOException
+
+import scala.scalanative.unsafe._
 
 import scala.scalanative.posix.fcntl._
 import scala.scalanative.posix.fcntlOps._
-import scala.scalanative.unsafe._
+import scala.scalanative.posix.string
+
+import scala.scalanative.posix.sys.stat
+import scala.scalanative.posix.sys.statOps._
 
 import scala.scalanative.posix.unistd
+
 import scala.scalanative.unsigned._
 import scala.scalanative.windows
 import scalanative.libc.stdio
@@ -37,6 +44,13 @@ private[java] final class FileChannelImpl(
     openForReading: Boolean,
     openForWriting: Boolean
 ) extends FileChannel {
+  private def throwPosixException(functionName: String): Unit = {
+    if (!isWindows) {
+      val errnoString = fromCString(string.strerror(errno))
+      throw new IOException(s"${functionName} failed: ${errnoString}")
+    }
+  }
+
   override def force(metadata: Boolean): Unit =
     fd.sync()
 
@@ -121,11 +135,45 @@ private[java] final class FileChannelImpl(
       position: Long,
       size: Long
   ): MappedByteBuffer = {
-    if ((mode eq FileChannel.MapMode.READ_ONLY) && !openForReading)
+    if (!openForReading)
       throw new NonReadableChannelException
-    if ((mode eq FileChannel.MapMode.READ_WRITE) && (!openForReading || !openForWriting))
-      throw new NonWritableChannelException
-    MappedByteBufferImpl(mode, position, size.toInt, fd, this)
+
+    // JVM states position is non-negative, hence 0 is allowed.
+    if (position < 0)
+      throw new IllegalArgumentException("Negative position")
+
+    /* JVM requires the "size" argument to be a long, but throws
+     * an exception if that long is greater than Integer.MAX_VALUE.
+     * toInt() would cause such a large value to rollover to a negative value.
+     *
+     * Call to MappedByteBufferImpl() below truncates its third argument
+     * to an Int, knowing this guard is in place.
+     *
+     * Java is playing pretty fast & loose with its Ints & Longs, but that is
+     * the specification & practice that needs to be followed.
+     */
+
+    if ((size < 0) || (size > Integer.MAX_VALUE))
+      throw new IllegalArgumentException("Negative size")
+
+    ensureOpen()
+
+    if (mode ne MapMode.READ_ONLY) {
+      // FileChannel.open() has previously rejected READ + APPEND combination.
+      if (!openForWriting)
+        throw new NonWritableChannelException
+
+      // This "lengthen" branch is tested/exercised in MappedByteBufferTest.
+      // Look in MappedByteBufferTest for tests of this "lengthen" block.
+      val currentFileSize = this.size()
+      // Detect Long overflow & throw. Room for improvement here.
+      val newFileSize = Math.addExact(position, size)
+      if (newFileSize > currentFileSize)
+        this.lengthen(newFileSize)
+    }
+
+    // RE: toInt() truncation safety, see note for "size" arg checking above.
+    MappedByteBufferImpl(mode, position, size.toInt, fd)
   }
 
   override def position(offset: Long): FileChannel = {
@@ -243,8 +291,7 @@ private[java] final class FileChannelImpl(
     } else {
       val readCount = unistd.read(fd.fd, buf, count.toUInt)
       if (readCount == 0) {
-        // end of file
-        -1
+        -1 // end of file
       } else if (readCount < 0) {
         // negative value (typically -1) indicates that read failed
         throw UnixException(file.fold("")(_.toString), errno)
@@ -260,11 +307,22 @@ private[java] final class FileChannelImpl(
       val size = stackalloc[windows.LargeInteger]()
       if (GetFileSizeEx(fd.handle, size)) (!size).toLong
       else 0L
-    } else {
-      val size = unistd.lseek(fd.fd, 0, stdio.SEEK_END);
-      unistd.lseek(fd.fd, 0, stdio.SEEK_CUR)
-      size.toLong
-    }
+    } else
+      Zone { implicit z =>
+        /* statbuf is too large to be thread stack friendly.
+         * Even a Zone and an alloc() per size() call should be cheaper than
+         * the required three (yes 3 to get it right and not move current
+         * position) lseek() calls. Room for performance improvements remain.
+         */
+
+        val statBuf = alloc[stat.stat]()
+
+        val err = stat.fstat(fd.fd, statBuf)
+        if (err != 0)
+          throwPosixException("fstat")
+
+        statBuf.st_size.toLong
+      }
   }
 
   override def transferFrom(
@@ -291,31 +349,97 @@ private[java] final class FileChannelImpl(
     nb
   }
 
-  override def truncate(size: Long): FileChannel =
-    if (!openForWriting) {
-      throw new IOException("Invalid argument")
+  private def lengthen(newFileSize: Long): Unit = {
+    /* Preconditions: only caller, this.map(),  has ensured:
+     *   - newFileSize > currentSize
+     *   - file was opened for writing.
+     *   - "this" channel is open
+     */
+    if (!isWindows) {
+      val status = unistd.ftruncate(fd.fd, newFileSize.toSize)
+      if (status < 0)
+        throwPosixException("ftruncate")
     } else {
-      ensureOpen()
       val currentPosition = position()
+
       val hasSucceded =
-        if (isWindows) {
+        FileApi.SetFilePointerEx(
+          fd.handle,
+          newFileSize,
+          null,
+          FILE_BEGIN
+        ) &&
+          FileApi.SetEndOfFile(fd.handle)
+
+      if (!hasSucceded)
+        throw new IOException("Failed to lengthen file")
+
+      /* Windows doc states that the content of the bytes between the
+       * currentPosition and the new end of file is undefined.
+       * In practice, NTFS will zero those bytes. The next step is redundant
+       * if one is _sure_ the file system is NTFS.
+       *
+       * Write a single byte to just before EOF to convince the
+       * Windows file systems to actualize and zero the undefined blocks.
+       */
+      write(ByteBuffer.wrap(Array[Byte](0.toByte)), newFileSize - 1)
+
+      position(currentPosition)
+    }
+
+    /* This next step may not be strictly necessary; it is included for the
+     * sake of robustness across as yet unseen Operating & File systems.
+     * The sync can be re-visited and  micro-optimized if performance becomes a
+     * concern.
+     *
+     * Most contemporary Operating and File systems will have ensured that
+     * the changes above are in non-volatile storage by the time execution
+     * reaches here.
+     *
+     * Give those corner cases where this is not so a strong hint that it
+     * should be. If the data is already non-volatile, this should be as
+     * fast as a kernel call can be.
+     */
+    force(true)
+  }
+
+  override def truncate(newSize: Long): FileChannel = {
+    if (newSize < 0)
+      throw new IllegalArgumentException("Negative size")
+
+    ensureOpen()
+
+    if (!openForWriting)
+      throw new NonWritableChannelException()
+
+    val currentPosition = position()
+
+    if (newSize < size()) {
+      if (isWindows) {
+        val hasSucceded =
           FileApi.SetFilePointerEx(
             fd.handle,
-            size,
+            newSize,
             null,
             FILE_BEGIN
           ) &&
-          FileApi.SetEndOfFile(fd.handle)
-        } else {
-          unistd.ftruncate(fd.fd, size.toSize) == 0
-        }
-      if (!hasSucceded) {
-        throw new IOException("Failed to truncate file")
+            FileApi.SetEndOfFile(fd.handle)
+        if (!hasSucceded)
+          throw new IOException("Failed to truncate file")
+      } else {
+        val err = unistd.ftruncate(fd.fd, newSize.toSize)
+        if (err != 0)
+          throwPosixException("ftruncate")
       }
-      if (currentPosition > size) position(size)
-      else position(currentPosition)
-      this
+
     }
+
+    // Always check, to avoid moon-shot corner cases.
+    if (currentPosition > newSize)
+      position(newSize)
+
+    this
+  }
 
   override def write(
       buffers: Array[ByteBuffer],
@@ -391,34 +515,61 @@ private[java] final class FileChannelImpl(
     }
   }
 
-  def available(): Int = {
-    if (isWindows) {
-      val currentPosition, lastPosition = stackalloc[windows.LargeInteger]()
-      SetFilePointerEx(
-        fd.handle,
-        distanceToMove = 0,
-        newFilePointer = currentPosition,
-        moveMethod = FILE_CURRENT
-      )
-      SetFilePointerEx(
-        fd.handle,
-        distanceToMove = 0,
-        newFilePointer = lastPosition,
-        moveMethod = FILE_END
-      )
-      SetFilePointerEx(
-        fd.handle,
-        distanceToMove = !currentPosition,
-        newFilePointer = null,
-        moveMethod = FILE_BEGIN
-      )
+  /* The Scala Native implementation of FileInputStream#available delegates
+   * to this method. This method now implements "available()" as described in
+   * the Java description of FileInputStream#available. So the delegator
+   * now matches the its JDK description and behavior (Issue 3333).
+   *
+   * There are a couple of fine points to this implemention which might
+   * be helpful to know:
+   *    1) There is no requirement that this method itself not block.
+   *       Indeed, depending upon what, if anything, is in the underlying
+   *       file system cache, this method may do so.
+   *
+   *       The current position should already be in the underlying OS fd but
+   *       calling "size()" may require reading an inode or equivalent.
+   *
+   *    2) Given JVM actual behavior, the "read (or skipped over) from this
+   *       input stream without blocking" clause of the JDK description might
+   *       be better read as "without blocking for additional data bytes".
+   *
+   *       A "skip()" should be a fast update of existing memory. Conceptually,
+   *       and by JDK definition FileChannel "read()"s may block transferring
+   *       bytes from slow storage to memory. Where is io_uring() when
+   *       you need it?
+   *
+   *    3) The value returned is exactly the "estimate" portion of the JDK
+   *       description:
+   *
+   *       - All bets are off is somebody, even this thread, decreases
+   *         size of the file in the interval between when "available()"
+   *         returns and "read()" is called.
+   *
+   *       - This method is defined in FileChannel#available as returning
+   *         an Int. This also matches the use above in the Windows
+   *         implementation of the private method
+   *         "read(buffer: Array[Byte], offset: Int, count: Int)"
+   *         Trace the count argument logic.
+   *
+   *         FileChannel defines "position()" and "size()" as Long values.
+   *         For large files and positions < Integer.MAX_VALUE,
+   *         The Long difference "lastPosition - currentPosition" might well
+   *         be greater than Integer.MAX_VALUE. In that case, the .toInt
+   *         truncation will return the low estimate of Integer.MAX_VALUE
+   *         not the true (Long) value. Matches the specification, but gotcha!
+   */
 
-      (!lastPosition - !currentPosition).toInt
-    } else {
-      val currentPosition = unistd.lseek(fd.fd, 0, stdio.SEEK_CUR)
-      val lastPosition = unistd.lseek(fd.fd, 0, stdio.SEEK_END)
-      unistd.lseek(fd.fd, currentPosition, stdio.SEEK_SET)
-      (lastPosition - currentPosition).toInt
-    }
+  // local API extension
+  private[java] def available(): Int = {
+    ensureOpen()
+
+    val currentPosition = position()
+    val lastPosition = size()
+
+    val nAvailable =
+      if (currentPosition >= lastPosition) 0
+      else lastPosition - currentPosition
+
+    nAvailable.toInt
   }
 }

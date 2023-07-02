@@ -13,10 +13,12 @@ import java.{lang => jl}
 
 import java.{util => ju}
 import java.util.Arrays
+import java.util.{OptionalDouble, DoubleSummaryStatistics}
+import java.util.Spliterator
+
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.CountDownLatch._
 
-import java.util.{OptionalDouble, DoubleSummaryStatistics}
 import java.util.function.{DoubleConsumer, DoubleFunction, DoubleSupplier}
 import java.util.function.Supplier
 
@@ -38,6 +40,54 @@ import org.scalanative.testsuite.utils.AssertThrows.assertThrows
 class DoubleStreamTest {
 
   final val epsilon = 0.00001 // tolerance for Floating point comparisons.
+
+// Methods specified in interface BaseStream ----------------------------
+
+  @Test def streamUnorderedOnUnorderedStream(): Unit = {
+    val dataSet = new ju.HashSet[Double]()
+    dataSet.add(0.1)
+    dataSet.add(1.1)
+    dataSet.add(-1.1)
+    dataSet.add(2.2)
+    dataSet.add(-2.2)
+
+    val s0 = dataSet.stream()
+    val s0Spliter = s0.spliterator()
+    assertFalse(
+      "Unexpected ORDERED stream from hashset",
+      s0Spliter.hasCharacteristics(Spliterator.ORDERED)
+    )
+
+    val su = dataSet.stream().unordered()
+    val suSpliter = su.spliterator()
+
+    assertFalse(
+      "Unexpected ORDERED stream",
+      suSpliter.hasCharacteristics(Spliterator.ORDERED)
+    )
+  }
+
+  @Test def streamUnorderedOnOrderedStream(): Unit = {
+    val s = DoubleStream.of(0.1, 1.1, -1.1, 2.2, -2.2)
+    val sSpliter = s.spliterator()
+
+    assertTrue(
+      "Expected ORDERED on stream from array",
+      sSpliter.hasCharacteristics(Spliterator.ORDERED)
+    )
+
+    // s was ordered, 'so' should be same same. Avoid "already used" exception
+    val so = DoubleStream.of(0.1, 1.1, -1.1, 2.2, -2.2)
+    val su = so.unordered()
+    val suSpliter = su.spliterator()
+
+    assertFalse(
+      "ORDERED stream after unordered()",
+      suSpliter.hasCharacteristics(Spliterator.ORDERED)
+    )
+  }
+
+// Methods specified in interface Stream --------------------------------
 
   @Test def doubleStreamBuilderCanBuildAnEmptyStream(): Unit = {
     val s = DoubleStream.builder().build()
@@ -234,6 +284,32 @@ class DoubleStreamTest {
       assertEquals(s"element: ${j})", expected(j), it.nextDouble(), epsilon)
 
     assertTrue("DoubleStream should not be empty", it.hasNext())
+  }
+
+  @Test def doubleStreamIterate_Unbounded_Characteristics(): Unit = {
+    val s = DoubleStream.iterate(0.0, n => n + 1.1)
+    val spliter = s.spliterator()
+
+    // spliterator should have required characteristics and no others.
+    // Note: DoubleStream requires NONNULL, whereas Stream[T] does not.
+    val requiredPresent =
+      Seq(Spliterator.ORDERED, Spliterator.IMMUTABLE, Spliterator.NONNULL)
+
+    val requiredAbsent = Seq(
+      Spliterator.SORTED,
+      Spliterator.SIZED,
+      Spliterator.SUBSIZED
+    )
+
+    StreamTestHelpers.verifyCharacteristics(
+      spliter,
+      requiredPresent,
+      requiredAbsent
+    )
+
+    // If SIZED is indeed missing, as expected, these conditions should hold.
+    assertEquals(s"getExactSizeIfKnown", -1L, spliter.getExactSizeIfKnown())
+    assertEquals(s"estimateSize", Long.MaxValue, spliter.estimateSize())
   }
 
   @Test def doubleStreamOf_NoItems(): Unit = {
