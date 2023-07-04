@@ -54,10 +54,17 @@ class Metadata(
 
     def loop(node: Class): Unit = {
       out += node
+      // MEMO: 初めは 0 .
       val start = id
       id += 1
       val directSubclasses =
         node.subclasses.filter(_.parent == Some(node)).toArray
+      if (node.name.show.contains("WeakRef")) {
+        // DEBUG:
+        directSubclasses.map(_.name.show).foreach { p =>
+          println(s"WeakRef's directSubclasses: ${p}")
+        }
+      }
       directSubclasses.sortBy(_.name.show).foreach { subcls => loop(subcls) }
       val end = id - 1
       ids(node) = start
